@@ -66,10 +66,8 @@
         request.bandwidth = Math.floor((request.bytesReceived / request.roundTripTime) * 8 * 1000);
       }
 
-        console.log("onload: " + url);
         if(!request.responseType){
             request.responseText = request.response;
-            console.log(request.responseText);
         }
 
       return callback.call(request, false, url);
