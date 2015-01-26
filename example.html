@@ -42,6 +42,8 @@
     body {
       font-family: Arial, sans-serif;
       margin: 20px;
+        padding-left: 250px;
+
     }
     .info {
       background-color: #eee;
@@ -50,10 +52,31 @@
       padding: 0 5px;
       margin: 20px 0;
     }
+
+    .stats {
+        position: fixed;
+        left: 0;
+        top: 0;
+        padding: 20px;
+        background: #000000;
+        opacity: 0.7;
+        font-family: "Courier New", Courier, monospace;
+        color: lightcyan;
+        font-size: 1.1em;
+    }
   </style>
 
 </head>
 <body>
+<div class="stats"> Loaded in bytes<br>
+    <div>P2P: &nbsp;&nbsp;<span class="P2P">0</span></div>
+    <div>HTTP: &nbsp;<span class="HTTP">0</span></div>
+    <div>Waste: <span class="Waste">0</span></div>
+    <div>Total: <span class="Total">0</span></div>
+    <div>Effic: <span class="Efficiency">0</span></div>
+    <div>Sent: &nbsp;<span class="Sent">0</span></div>
+    <div>Peers: <span class="NumOfPeers">0</span></div>
+</div>
   <div class="info">
     <p>The video below is an <a href="https://developer.apple.com/library/ios/documentation/networkinginternet/conceptual/streamingmediaguide/Introduction/Introduction.html#//apple_ref/doc/uid/TP40008332-CH1-SW1">HTTP Live Stream</a>. On desktop browsers other than Safari, the HLS plugin will polyfill support for the format on top of the video.js Flash tech.</p>
     <p>Due to security restrictions in Flash, you will have to load this page over HTTP(S) to see the example in action.</p>
@@ -71,6 +94,17 @@
     videojs.options.flash.swf = 'node_modules/video.js/dist/video-js/video-js.swf';
     // initialize the player
     var player = videojs('video');
+
+    function P2PPerformanceUpdate(total) {
+        // custom code goes here
+        document.querySelector('.stats .HTTP').innerHTML = total.http;
+        document.querySelector('.stats .P2P').innerHTML = total.p2p;
+        document.querySelector('.stats .Waste').innerHTML = total.waste;
+        document.querySelector('.stats .Total').innerHTML = total.loaded;
+        document.querySelector('.stats .Efficiency').innerHTML = Math.round(100*((total.p2p + total.fs)/total.loaded)) + '%';
+        document.querySelector('.stats .Sent').innerHTML = total.sent;
+        document.querySelector('.stats .NumOfPeers').innerHTML = total.numOfPeers;
+    }
   </script>
 </body>
 </html>
