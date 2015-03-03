@@ -1,10 +1,8 @@
 /*
  * videojs-hls
- *
- * Copyright (c) 2014 Brightcove
- * All rights reserved.
+ * The main file for the HLS project.
+ * License: https://github.com/videojs/videojs-contrib-hls/blob/master/LICENSE
  */
-
 (function(window, videojs, document, undefined) {
 'use strict';
 
@@ -75,6 +73,44 @@ videojs.Hls.prototype.src = function(src) {
 
   this.segmentBuffer_ = [];
   this.segmentParser_ = new videojs.Hls.SegmentParser();
+
+  // if the stream contains ID3 metadata, expose that as a metadata
+  // text track
+  (function() {
+    var
+      metadataStream = tech.segmentParser_.metadataStream,
+      textTrack;
+
+    // only expose metadata tracks to video.js versions that support
+    // dynamic text tracks (4.12+)
+    if (!tech.player().addTextTrack) {
+      return;
+    }
+
+    metadataStream.on('data', function(metadata) {
+      var i, frame, time, hexDigit;
+
+      // create the metadata track if this is the first ID3 tag we've
+      // seen
+      if (!textTrack) {
+        textTrack = tech.player().addTextTrack('metadata', 'Timed Metadata');
+
+        // build the dispatch type from the stream descriptor
+        // https://html.spec.whatwg.org/multipage/embedded-content.html#steps-to-expose-a-media-resource-specific-text-track
+        textTrack.inBandMetadataTrackDispatchType = videojs.Hls.SegmentParser.STREAM_TYPES.metadata.toString(16).toUpperCase();
+        for (i = 0; i < metadataStream.descriptor.length; i++) {
+          hexDigit = ('00' + metadataStream.descriptor[i].toString(16).toUpperCase()).slice(-2);
+          textTrack.inBandMetadataTrackDispatchType += hexDigit;
+        }
+      }
+
+      for (i = 0; i < metadata.frames.length; i++) {
+        frame = metadata.frames[i];
+        time = metadata.pts / 1000;
+        textTrack.addCue(new window.VTTCue(time, time, frame.value || frame.url));
+      }
+    });
+  })();
 
   // load the MediaSource into the player
   this.mediaSource.addEventListener('sourceopen', videojs.bind(this, this.handleSourceOpen));
@@ -474,13 +510,20 @@ videojs.Hls.prototype.fillBuffer = function(offset) {
   }
 
   // resolve the segment URL relative to the playlist
-  if (this.playlists.media().uri === this.src_) {
-    segmentUri = resolveUrl(this.src_, segment.uri);
-  } else {
-    segmentUri = resolveUrl(resolveUrl(this.src_, this.playlists.media().uri || ''), segment.uri);
-  }
+  segmentUri = this.playlistUriToUrl(segment.uri);
 
   this.loadSegment(segmentUri, offset);
+};
+
+videojs.Hls.prototype.playlistUriToUrl = function(segmentRelativeUrl) {
+  var playListUrl;
+    // resolve the segment URL relative to the playlist
+  if (this.playlists.media().uri === this.src_) {
+    playListUrl = resolveUrl(this.src_, segmentRelativeUrl);
+  } else {
+    playListUrl = resolveUrl(resolveUrl(this.src_, this.playlists.media().uri || ''), segmentRelativeUrl);
+  }
+  return playListUrl;
 };
 
 /*
@@ -611,12 +654,17 @@ videojs.Hls.prototype.drainBuffer = function(event) {
   // until it empties before calling it when a discontinuity is
   // next in the buffer
   if (segment.discontinuity) {
-    if (event.type !== 'waiting') {
+    if (event.type === 'waiting') {
+      this.sourceBuffer.abort();
+      // tell the SWF where playback is continuing in the stitched timeline
+      this.el().vjs_setProperty('currentTime', segmentOffset * 0.001);
+    } else if (event.type === 'timeupdate') {
+      return;
+    } else if (typeof offset !== 'number') {
+      //if the discontinuity is reached under normal conditions, ie not a seek,
+      //the buffer already contains data and does not need to be refilled,
       return;
     }
-    this.sourceBuffer.abort();
-    // tell the SWF where playback is continuing in the stitched timeline
-    this.el().vjs_setProperty('currentTime', segmentOffset * 0.001);
   }
 
   // transmux the segment data from MP2T to FLV
@@ -681,7 +729,7 @@ videojs.Hls.prototype.fetchKeys = function(playlist, index) {
     key = playlist.segments[i].key;
     if (key && !key.bytes && !keyFailed(key)) {
       keyXhr = videojs.Hls.xhr({
-        url: resolveUrl(playlist.uri, key.uri),
+        url: this.playlistUriToUrl(key.uri),
         responseType: 'arraybuffer',
         withCredentials: settings.withCredentials
       }, function(err, url) {

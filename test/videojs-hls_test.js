@@ -110,6 +110,9 @@ var
       this.getNextTag = function() {
         return tags.shift();
       };
+      this.metadataStream = {
+        on: Function.prototype
+      };
     };
   };
 
@@ -897,6 +900,9 @@ test('flushes the parser after each segment', function() {
       flushes++;
     };
     this.tagsAvailable = function() {};
+    this.metadataStream = {
+      on: Function.prototype
+    };
   };
 
   player.src({
@@ -908,6 +914,52 @@ test('flushes the parser after each segment', function() {
   standardXHRResponse(requests[0]);
   standardXHRResponse(requests[1]);
   strictEqual(flushes, 1, 'tags are flushed at the end of a segment');
+});
+
+test('exposes in-band metadata events as cues', function() {
+  var track;
+  player.src({
+    src: 'manifest/media.m3u8',
+    type: 'application/vnd.apple.mpegurl'
+  });
+  openMediaSource(player);
+
+  player.hls.segmentParser_.parseSegmentBinaryData = function() {
+    // fake out a descriptor
+    player.hls.segmentParser_.metadataStream.descriptor = new Uint8Array([
+      1, 2, 3, 0xbb
+    ]);
+    // trigger a metadata event
+    player.hls.segmentParser_.metadataStream.trigger('data', {
+      pts: 2000,
+      data: new Uint8Array([]),
+      frames: [{
+        type: 'TXXX',
+        value: 'cue text'
+      }, {
+        type: 'WXXX',
+        url: 'http://example.com'
+      }]
+    });
+  };
+
+  standardXHRResponse(requests[0]);
+  standardXHRResponse(requests[1]);
+
+  equal(player.textTracks().length, 1, 'created a text track');
+  track = player.textTracks()[0];
+  equal(track.kind, 'metadata', 'kind is metadata');
+  equal(track.inBandMetadataTrackDispatchType, '15010203BB', 'set the dispatch type');
+  equal(track.cues.length, 2, 'created two cues');
+  equal(track.cues[0].startTime, 2, 'cue starts at 2 seconds');
+  equal(track.cues[0].endTime, 2, 'cue ends at 2 seconds');
+  equal(track.cues[0].pauseOnExit, false, 'cue does not pause on exit');
+  equal(track.cues[0].text, 'cue text', 'set cue text');
+
+  equal(track.cues[1].startTime, 2, 'cue starts at 2 seconds');
+  equal(track.cues[1].endTime, 2, 'cue ends at 2 seconds');
+  equal(track.cues[1].pauseOnExit, false, 'cue does not pause on exit');
+  equal(track.cues[1].text, 'http://example.com', 'set cue text');
 });
 
 test('drops tags before the target timestamp when seeking', function() {
@@ -1186,7 +1238,7 @@ test('waits until the buffer is empty before appending bytes at a discontinuity'
   var aborts = 0, setTime, currentTime, bufferEnd;
 
   player.src({
-    src: 'disc.m3u8',
+    src: 'discontinuity.m3u8',
     type: 'application/vnd.apple.mpegurl'
   });
   openMediaSource(player);
@@ -1233,7 +1285,7 @@ test('clears the segment buffer on seek', function() {
   videojs.Hls.SegmentParser = mockSegmentParser(tags);
 
   player.src({
-    src: 'disc.m3u8',
+    src: 'discontinuity.m3u8',
     type: 'application/vnd.apple.mpegurl'
   });
   openMediaSource(player);
@@ -1269,6 +1321,56 @@ test('clears the segment buffer on seek', function() {
 
   // seek back to the beginning
   player.currentTime(0);
+  tags.push({ pts: 0, bytes: 0 });
+  standardXHRResponse(requests.pop());
+  strictEqual(aborts, 1, 'aborted once for the seek');
+
+  // the source buffer empties. is 2.ts still in the segment buffer?
+  player.trigger('waiting');
+  strictEqual(aborts, 1, 'cleared the segment buffer on a seek');
+});
+
+test('continues playing after seek to discontinuity', function() {
+  var aborts = 0, tags = [], currentTime, bufferEnd, oldCurrentTime;
+
+  videojs.Hls.SegmentParser = mockSegmentParser(tags);
+
+  player.src({
+    src: 'discontinuity.m3u8',
+    type: 'application/vnd.apple.mpegurl'
+  });
+  openMediaSource(player);
+  oldCurrentTime = player.currentTime;
+  player.currentTime = function(time) {
+    if (time !== undefined) {
+      return oldCurrentTime.call(player, time);
+    }
+    return currentTime;
+  };
+  player.buffered = function() {
+    return videojs.createTimeRange(0, bufferEnd);
+  };
+  player.hls.sourceBuffer.abort = function() {
+    aborts++;
+  };
+
+  requests.pop().respond(200, null,
+    '#EXTM3U\n' +
+    '#EXTINF:10,0\n' +
+    '1.ts\n' +
+    '#EXT-X-DISCONTINUITY\n' +
+    '#EXTINF:10,0\n' +
+    '2.ts\n');
+  standardXHRResponse(requests.pop());
+
+  currentTime = 1;
+  bufferEnd = 10;
+  player.trigger('timeupdate');
+
+  standardXHRResponse(requests.pop());
+
+  // seek to the discontinuity
+  player.currentTime(10);
   tags.push({ pts: 0, bytes: 0 });
   standardXHRResponse(requests.pop());
   strictEqual(aborts, 1, 'aborted once for the seek');
@@ -1560,6 +1662,48 @@ test('calling fetchKeys() when a new playlist is loaded will create an XHR', fun
   strictEqual(requests[1].url, player.hls.playlists.media().segments[0].key.uri, 'a key XHR is created with correct uri');
 
   player.hls.playlists.media = oldMedia;
+});
+
+test('fetchKeys() resolves URLs relative to the master playlist', function() {
+  player.src({
+    src: 'video/master-encrypted.m3u8',
+    type: 'application/vnd.apple.mpegurl'
+  });
+  openMediaSource(player);
+  requests.shift().respond(200, null,
+                           '#EXTM3U\n' +
+                           '#EXT-X-STREAM-INF:PROGRAM-ID=1,BANDWIDTH=17\n' +
+                           'playlist/playlist.m3u8\n' +
+                           '#EXT-X-ENDLIST\n');
+  requests.shift().respond(200, null,
+                           '#EXTM3U\n' +
+                           '#EXT-X-TARGETDURATION:15\n' +
+                           '#EXT-X-KEY:METHOD=AES-128,URI="keys/key.php"\n' +
+                           '#EXTINF:2.833,\n' +
+                           'http://media.example.com/fileSequence1.ts\n' +
+                           '#EXT-X-ENDLIST\n');
+
+  equal(requests.length, 2, 'requested two URLs');
+  ok((/video\/playlist\/keys\/key\.php$/).test(requests[0].url),
+     'resolves multiple relative paths');
+});
+
+test('fetchKeys() resolves URLs relative to their containing playlist', function() {
+  player.src({
+    src: 'video/media-encrypted.m3u8',
+    type: 'application/vnd.apple.mpegurl'
+  });
+  openMediaSource(player);
+  requests.shift().respond(200, null,
+                           '#EXTM3U\n' +
+                           '#EXT-X-TARGETDURATION:15\n' +
+                           '#EXT-X-KEY:METHOD=AES-128,URI="keys/key.php"\n' +
+                           '#EXTINF:2.833,\n' +
+                           'http://media.example.com/fileSequence1.ts\n' +
+                           '#EXT-X-ENDLIST\n');
+  equal(requests.length, 2, 'requested two URLs');
+  ok((/video\/keys\/key\.php$/).test(requests[0].url),
+     'resolves multiple relative paths');
 });
 
 test('a new keys XHR is created when a previous key XHR finishes', function() {
