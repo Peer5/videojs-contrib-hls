@@ -38,6 +38,24 @@ module.exports = function(grunt) {
               'src/decrypter.js'
             ],
         dest: 'dist/videojs.hls.js'
+      },
+      peer5: {
+        nonull: true,
+        src: ['src/videojs-hls.js',
+          'src/stream.js',
+          'src/flv-tag.js',
+          'src/exp-golomb.js',
+          'src/h264-stream.js',
+          'src/aac-stream.js',
+          'src/metadata-stream.js',
+          'src/segment-parser.js',
+          'src/m3u8/m3u8-parser.js',
+          'src/peer5-request.js',
+          'src/playlist-loader.js',
+          'node_modules/pkcs7/dist/pkcs7.unpad.js',
+          'src/decrypter.js'
+        ],
+        dest: 'dist/videojs.peer5.hls.js'
       }
     },
     uglify: {
@@ -47,6 +65,10 @@ module.exports = function(grunt) {
       dist: {
         src: '<%= concat.dist.dest %>',
         dest: 'dist/videojs.hls.min.js'
+      },
+      peer5: {
+        src: '<%= concat.peer5.dest %>',
+        dest: 'dist/videojs.peer5.hls.min.js'
       }
     },
     jshint: {
@@ -188,7 +210,7 @@ module.exports = function(grunt) {
         configFile: 'test/karma.conf.js',
         autoWatch: false
       }
-    },
+    }
 
   });
 
@@ -256,8 +278,14 @@ module.exports = function(grunt) {
   grunt.registerTask('default',
                      ['clean',
                       'test',
-                      'concat',
+                      'concat:dist',
                       'uglify']);
+
+  grunt.registerTask('peer5',
+    ['clean',
+      'test',
+      'concat:peer5',
+      'uglify:peer5']);
 
   // The test task will run `karma:saucelabs` when running in travis,
   // otherwise, it'll default to running karma in chrome.
