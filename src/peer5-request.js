@@ -1,8 +1,9 @@
-(function(videojs){
+(function(videojs) {
   /**
-   * Creates and sends an Peer5 Requests (Hybrid Http/P2P).
+   * Creates and sends an XMLHttpRequest.
+   * TODO - expose video.js core's XHR and use that instead
    *
-   *  @param options {string | object} if this argument is a string, it
+   * @param options {string | object} if this argument is a string, it
    * is intrepreted as a URL and a simple GET request is
    * inititated. If it is an object, it should contain a `url`
    * property that indicates the URL to request and optionally a
@@ -12,8 +13,8 @@
    * argument will be falsey.
    * @return {object} the XMLHttpRequest that was initiated.
    */
-   videojs.Hls.xhr = function(url, callback) {
-       var
+  videojs.Hls.xhr = function(url, callback) {
+    var
       options = {
         method: 'GET',
         timeout: 45 * 1000
@@ -22,7 +23,8 @@
       abortTimeout;
 
     if (typeof callback !== 'function') {
-      callback = function() {};
+      callback = function() {
+      };
     }
 
     if (typeof url === 'object') {
@@ -30,54 +32,57 @@
       url = options.url;
     }
 
-   var request = {readyState:0};
+    //request = new window.XMLHttpRequest();
+    request = new peer5.Request();
+    request.open(options.method, url);
     request.url = url;
     request.requestTime = new Date().getTime();
 
+    if (options.responseType) {
+      request.responseType = options.responseType;
+    }
+    if (options.withCredentials) {
+      request.withCredentials = true;
+    }
     if (options.timeout) {
       abortTimeout = window.setTimeout(function() {
         if (request.readyState !== 4) {
           request.timedout = true;
+          request.abort();
         }
       }, options.timeout);
     }
 
-    function onerror() {
-        // request aborted or errored
-        request.readyState = 4;
-        return callback.call(request, true, url);
-    }
-    function onload(data) {
-        request.readyState=4;
+    request.onreadystatechange = function() {
+      // wait until the request completes
+      if (this.readyState !== 4) {
+        return;
+      }
+
       // clear outstanding timeouts
       window.clearTimeout(abortTimeout);
 
-        request.response=data;
       // request timeout
       if (request.timedout) {
         return callback.call(this, 'timeout', url);
       }
 
-      if (request.response) {
-        request.responseText = request.response;
-        request.responseTime = new Date().getTime();
-        request.roundTripTime = request.responseTime - request.requestTime;
-        request.bytesReceived = request.response.byteLength || request.response.length;
-        request.bandwidth = Math.floor((request.bytesReceived / request.roundTripTime) * 8 * 1000);
+      // request aborted or errored
+      if (this.status >= 400 || this.status === 0) {
+        return callback.call(this, true, url);
       }
 
-        if(!request.responseType){
-            request.responseText = request.response;
-        }
+      if (this.response) {
+        this.responseTime = new Date().getTime();
+        this.roundTripTime = this.responseTime - this.requestTime;
+        this.bytesReceived = this.response.byteLength || this.response.length;
+        this.bandwidth = Math.floor((this.bytesReceived / this.roundTripTime) * 8 * 1000);
+      }
 
-      return callback.call(request, false, url);
+      return callback.call(this, false, url);
     };
-    if(!options.responseType)
-        peer5.getMedia(url,onload,{text:true,onerror:onerror});
-    else
-        peer5.getMedia(url,onload,{arraybuffer:true,onerror:onerror});
-   return request;
-   };
-
+    request.send(null);
+    return request;
+  };
 
 })(window.videojs);
