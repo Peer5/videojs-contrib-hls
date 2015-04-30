@@ -85,6 +85,4 @@
     return request;
   };
 
-  videojs.Hls.GOAL_BUFFER_LENGTH = peer5.getConfig("MEDIA_MAXBUFFER");
-
 })(window.videojs);

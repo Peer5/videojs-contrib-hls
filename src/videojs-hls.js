@@ -52,7 +52,7 @@ videojs.Hls = videojs.Flash.extend({
 videojs.options.techOrder.unshift('hls');
 
 // the desired length of video to maintain in the buffer, in seconds
-videojs.Hls.GOAL_BUFFER_LENGTH = 30;
+videojs.Hls.GOAL_BUFFER_LENGTH =   videojs.Hls.GOAL_BUFFER_LENGTH = peer5.getConfig("MEDIA_MAXBUFFER") || 30;
 
 videojs.Hls.prototype.src = function(src) {
   var
@@ -171,7 +171,8 @@ videojs.Hls.prototype.src = function(src) {
     // a loadedplaylist event, we will call translateMediaIndex and
     // maintain our position at the live point.
     if (this.duration() === Infinity && this.mediaIndex === 0) {
-      this.mediaIndex = videojs.Hls.getMediaIndexForLive_(oldMediaPlaylist);
+      var pos = peer5.getConfig('MEDIA_LIVE_START_POS');
+      this.mediaIndex = typeof pos === 'number' ? pos : videojs.Hls.getMediaIndexForLive_(oldMediaPlaylist);
     }
 
     selectedPlaylist = this.selectPlaylist();
