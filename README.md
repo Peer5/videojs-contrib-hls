@@ -1,23 +1,33 @@
-# video.js HLS Tech
+# Peer5 with video.js HLS Tech
 
-A video.js tech that plays HLS video on platforms that don't support it but have Flash.
+A video.js tech that plays HLS using both p2p and http. [Peer5](https://www.peer5.com) leverages WebRTC DataChannels to create a seamless mesh network which is effective in [video delivery](https://www.peer5.com/website/video.html).  
+
+Forked from videojs-contrib-hls: A video.js tech that plays HLS video on platforms that don't support it but have Flash.
 
 [![Build Status](https://travis-ci.org/videojs/videojs-contrib-hls.svg?branch=master)](https://travis-ci.org/videojs/videojs-contrib-hls)
 
 ## Getting Started
-Download the [Media Source plugin](https://github.com/videojs/videojs-contrib-media-sources/releases) as well as the [HLS tech](https://github.com/videojs/videojs-contrib-hls/releases). On your web page:
+Download the [Media Source plugin](https://github.com/videojs/videojs-contrib-media-sources/releases). On your web page:
+Get your API key from Peer5 by [signing up](https://www.peer5.com/)
 
 ```html
+<!-- head -->
+<script src="//api.peer5.com/peer5.js?id=ncp2vywz762cq79dgwd7"></script><!-- enter your api key instead after ?id= -->
 <script src="video.js"></script>
 <script src="videojs-media-sources.js"></script>
 <script src="videojs-hls.min.js"></script>
+<script src="//api.peer5.com/peer5.videojs.hls.js"></script>
+
+<!-- body -->
+<video id="player" class="video-js vjs-default-skin">
+    <source src="" />
+</video>
 <script>
-  var player = videojs('test-vid');
-  player.play();
+    var player = videojs('#player');
 </script>
 ```
 
-## Documentation
+## Documentation (videojs-contrib-hls)
 [HTTP Live Streaming](https://developer.apple.com/streaming/) (HLS) has
 become a de-facto standard for streaming video on mobile devices
 thanks to its native support on iOS and Android. There are a number of
