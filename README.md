@@ -7,9 +7,11 @@ Forked from videojs-contrib-hls: A video.js tech that plays HLS video on platfor
 [![Build Status](https://travis-ci.org/videojs/videojs-contrib-hls.svg?branch=master)](https://travis-ci.org/videojs/videojs-contrib-hls)
 
 ## Getting Started
-Download the [Media Source plugin](https://github.com/videojs/videojs-contrib-media-sources/releases). On your web page:
+Download the [Media Source plugin](https://github.com/videojs/videojs-contrib-media-sources/releases). 
+
 Get your API key from Peer5 by [signing up](https://www.peer5.com/)
 
+On your web page:
 ```html
 <!-- head -->
 <script src="//api.peer5.com/peer5.js?id=ncp2vywz762cq79dgwd7"></script><!-- enter your api key instead after ?id= -->
