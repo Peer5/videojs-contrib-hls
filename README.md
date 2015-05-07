@@ -17,8 +17,7 @@ On your web page:
 <script src="//api.peer5.com/peer5.js?id=ncp2vywz762cq79dgwd7"></script><!-- enter your api key instead after ?id= -->
 <script src="video.js"></script>
 <script src="videojs-media-sources.js"></script>
-<script src="videojs-hls.min.js"></script>
-<script src="//api.peer5.com/peer5.videojs.hls.js"></script>
+<script src="//api.peer5.com/peer5.videojs.hls.js"></script><!-- replaces videojs-hls.min.js -->
 
 <!-- body -->
 <video id="player" class="video-js vjs-default-skin">
