@@ -59,7 +59,7 @@ module.exports = function(grunt) {
           'node_modules/pkcs7/dist/pkcs7.unpad.js',
           'src/decrypter.js'
         ],
-        dest: 'dist/videojs.peer5.hls.js'
+        dest: 'dist/peer5.videojs.hls.js'
       }
     },
     uglify: {
@@ -72,7 +72,7 @@ module.exports = function(grunt) {
       },
       peer5: {
         src: '<%= concat.peer5.dest %>',
-        dest: 'dist/videojs.peer5.hls.min.js'
+        dest: 'dist/peer5.videojs.hls.min.js'
       }
     },
     jshint: {
