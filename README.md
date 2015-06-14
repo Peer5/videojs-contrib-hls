@@ -177,12 +177,19 @@ embedded as [ID3 tags](http://id3.org/id3v2.3.0). When a stream is
 encountered with embedded metadata, an [in-band metadata text
 track](https://html.spec.whatwg.org/multipage/embedded-content.html#text-track-in-band-metadata-track-dispatch-type)
 will automatically be created and populated with cues as they are
-encountered in the stream. Only UTF-8 encoded
+encountered in the stream. UTF-8 encoded
 [TXXX](http://id3.org/id3v2.3.0#User_defined_text_information_frame)
 and [WXXX](http://id3.org/id3v2.3.0#User_defined_URL_link_frame) ID3
-frames are currently mapped to cue points. There are lots of guides
-and references to using text tracks [around the
-web](http://www.html5rocks.com/en/tutorials/track/basics/).
+frames are mapped to cue points and their values set as the cue
+text. Cues are created for all other frame types and the data is
+attached to the generated cue:
+
+```js
+cue.frame.data
+```
+
+There are lots of guides and references to using text tracks [around
+the web](http://www.html5rocks.com/en/tutorials/track/basics/).
 
 ### Testing
 
@@ -214,21 +221,4 @@ available](http://enable-cors.org/server.html) for popular webservers
 and most CDNs should have no trouble turning CORS on for your account.
 
 ## Release History
-- 0.13.0:
-  - Improved audio/video synchronization
-  - Fixes for live, HLSe, and discontinuities
-  - Rename internal methods to clarify their intended visibility
-- 0.12.0: support for custom IVs with AES-128 encryption
-- 0.11.0: embedded ID3 tags are exposed as an in-band metadata track
-- 0.10.0: optimistic initial bitrate selection
-- 0.9.0: support segment level AES-128 encryption
-- 0.8.0: support for EXT-X-DISCONTINUITY
-- 0.7.0: convert the HLS plugin to a tech
-- 0.6.0:
-  - Refactor playlist loading
-  - Add testing via karma
-- 0.5.0: cookie-based content protection support (see `withCredentials`)
-- 0.4.0: Live stream support
-- 0.3.0: Performance fixes for high-bitrate streams
-- 0.2.0: Basic playback and adaptive bitrate selection
-- 0.1.0: Initial release
+Check out the [changelog](CHANGELOG.md) for a summary of each release.
