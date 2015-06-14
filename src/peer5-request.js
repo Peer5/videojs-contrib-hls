@@ -3,9 +3,9 @@
    * Creates and sends an XMLHttpRequest.
    * TODO - expose video.js core's XHR and use that instead
    *
-   * @param options {string | object} if this argument is a string, it
-   * is intrepreted as a URL and a simple GET request is
-   * inititated. If it is an object, it should contain a `url`
+   * @param url {string | object} if this argument is a string, it
+   * is interpreted as a URL and a simple GET request is
+   * initiated. If it is an object, it should contain a `url`
    * property that indicates the URL to request and optionally a
    * `method` which is the type of HTTP request to send.
    * @param callback (optional) {function} a function to call when the
@@ -23,8 +23,7 @@
       abortTimeout;
 
     if (typeof callback !== 'function') {
-      callback = function() {
-      };
+      callback = function() {};
     }
 
     if (typeof url === 'object') {
@@ -32,7 +31,6 @@
       url = options.url;
     }
 
-    //request = new window.XMLHttpRequest();
     request = new peer5.Request();
     request.open(options.method, url);
     request.url = url;
