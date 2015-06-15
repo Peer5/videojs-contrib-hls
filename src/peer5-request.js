@@ -31,7 +31,7 @@
       url = options.url;
     }
 
-    request = new peer5.Request();
+    request = typeof peer5 !== 'undefined' ? new peer5.Request() : new XMLHttpRequest();
     request.open(options.method, url);
     request.url = url;
     request.requestTime = new Date().getTime();
