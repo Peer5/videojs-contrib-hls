@@ -28,6 +28,8 @@ On your web page:
 </script>
 ```
 
+Check out our [live example](http://videojs.github.io/videojs-contrib-hls/) if you're having trouble.
+
 ## Documentation (videojs-contrib-hls)
 [HTTP Live Streaming](https://developer.apple.com/streaming/) (HLS) has
 become a de-facto standard for streaming video on mobile devices
