@@ -330,7 +330,12 @@ videojs.Hls.prototype.play = function() {
   if (this.duration() === Infinity &&
       this.playlists.media() &&
       !this.player().hasClass('vjs-has-started')) {
-    this.setCurrentTime(this.seekable().end(0));
+
+    var time = this.seekable().end(0);
+    if (typeof peer5 !== 'undefined') {
+      time = peer5.getConfig('MEDIA_LIVE_START_POS') || time;
+    }
+    this.setCurrentTime(time);
   }
 
   // delegate back to the Flash implementation
