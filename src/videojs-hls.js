@@ -210,10 +210,6 @@ videojs.Hls.getMediaIndexForLive_ = function(selectedPlaylist) {
     return 0;
   }
 
-  if (typeof peer5 !== 'undefined') {
-    return peer5.getConfig('MEDIA_LIVE_START_POS') || 0;
-  }
-
   var tailIterator = selectedPlaylist.segments.length,
       tailDuration = 0,
       targetTail = (selectedPlaylist.targetDuration || 10) * 3;
@@ -333,7 +329,7 @@ videojs.Hls.prototype.play = function() {
 
     var time = this.seekable().end(0);
     if (typeof peer5 !== 'undefined') {
-      time = peer5.getConfig('MEDIA_LIVE_START_POS') || time;
+      time = peer5.getConfig('MEDIA_LIVE_START_POS');
     }
     this.setCurrentTime(time);
   }
