@@ -28,7 +28,7 @@ On your web page:
 </script>
 ```
 
-Check out our [live example](http://videojs.github.io/videojs-contrib-hls/) if you're having trouble.
+Check out our [live example](http://demo.peer5.com/examples/video/videojs.html) if you're having trouble.
 
 ## Documentation (videojs-contrib-hls)
 [HTTP Live Streaming](https://developer.apple.com/streaming/) (HLS) has
