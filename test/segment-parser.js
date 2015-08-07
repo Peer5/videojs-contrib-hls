@@ -284,6 +284,17 @@
     equal(packets.length, 1, 'parsed non-payload metadata packet');
   });
 
+  test('returns undefined for PTS stats when a track is missing', function() {
+    parser.parseSegmentBinaryData(new Uint8Array(makePacket({
+      programs: {
+        0x01: [0x01]
+      }
+    })));
+
+    strictEqual(parser.stats.h264Tags(), 0, 'no video tags yet');
+    strictEqual(parser.stats.aacTags(), 0, 'no audio tags yet');
+  });
+
   test('parses the first bipbop segment', function() {
     parser.parseSegmentBinaryData(window.bcSegment);
 
@@ -422,9 +433,18 @@
       byte,
       tag,
       type,
+      minVideoPts,
+      maxVideoPts,
+      minAudioPts,
+      maxAudioPts,
       currentPts = 0,
       lastTime = 0;
     parser.parseSegmentBinaryData(window.bcSegment);
+
+    minVideoPts = parser.stats.minVideoPts();
+    maxVideoPts = parser.stats.maxVideoPts();
+    minAudioPts = parser.stats.minAudioPts();
+    maxAudioPts = parser.stats.maxAudioPts();
 
     while (parser.tagsAvailable()) {
       tag = parser.getNextTag();
@@ -435,11 +455,15 @@
 
       // generic flv headers
       switch (type) {
-        case 8: ok(true, 'the type is audio');
+      case 8: ok(true, 'the type is audio');
+        ok(minAudioPts <= currentPts, 'not less than minimum audio PTS');
+        ok(maxAudioPts >= currentPts, 'not greater than max audio PTS');
         break;
-        case 9: ok(true, 'the type is video');
+      case 9: ok(true, 'the type is video');
+        ok(minVideoPts <= currentPts, 'not less than minimum video PTS');
+        ok(maxVideoPts >= currentPts, 'not greater than max video PTS');
         break;
-        case 18: ok(true, 'the type is script');
+      case 18: ok(true, 'the type is script');
         break;
         default: ok(false, 'the type (' + type + ') is unrecognized');
       }

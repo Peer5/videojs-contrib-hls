@@ -35,6 +35,14 @@ videojs.Hls = videojs.Flash.extend({
     options.source = source;
     this.bytesReceived = 0;
 
+    this.hasPlayed_ = false;
+    this.on(player, 'loadstart', function() {
+      this.hasPlayed_ = false;
+      this.one(this.mediaSource, 'sourceopen', this.setupFirstPlay);
+    });
+    this.on(player, ['play', 'loadedmetadata'], this.setupFirstPlay);
+
+
     // TODO: After video.js#1347 is pulled in remove these lines
     this.currentTime = videojs.Hls.prototype.currentTime;
     this.setCurrentTime = videojs.Hls.prototype.setCurrentTime;
@@ -109,12 +117,7 @@ videojs.Hls.prototype.src = function(src) {
 
   this.playlists.on('loadedmetadata', videojs.bind(this, function() {
     var selectedPlaylist, loaderHandler, oldBitrate, newBitrate, segmentDuration,
-        segmentDlTime, setupEvents, threshold;
-
-    setupEvents = function() {
-      this.fillBuffer();
-      player.trigger('loadedmetadata');
-    };
+        segmentDlTime, threshold;
 
     oldMediaPlaylist = this.playlists.media();
 
@@ -155,12 +158,16 @@ videojs.Hls.prototype.src = function(src) {
     if (newBitrate > oldBitrate && segmentDlTime <= threshold) {
       this.playlists.media(selectedPlaylist);
       loaderHandler = videojs.bind(this, function() {
-        setupEvents.call(this);
+        this.setupFirstPlay();
+        this.fillBuffer();
+        player.trigger('loadedmetadata');
         this.playlists.off('loadedplaylist', loaderHandler);
       });
       this.playlists.on('loadedplaylist', loaderHandler);
     } else {
-      setupEvents.call(this);
+      this.setupFirstPlay();
+      this.fillBuffer();
+      player.trigger('loadedmetadata');
     }
   }));
 
@@ -260,7 +267,7 @@ videojs.Hls.prototype.setupMetadataCueTranslation_ = function() {
   // add a metadata cue whenever a metadata event is triggered during
   // segment parsing
   metadataStream.on('data', function(metadata) {
-    var i, cue, frame, time, media, segmentOffset, hexDigit;
+    var i, hexDigit;
 
     // create the metadata track if this is the first ID3 tag we've
     // seen
@@ -276,19 +283,11 @@ videojs.Hls.prototype.setupMetadataCueTranslation_ = function() {
       }
     }
 
-    // calculate the start time for the segment that is currently being parsed
-    media = tech.playlists.media();
-    segmentOffset = tech.playlists.expiredPreDiscontinuity_ + tech.playlists.expiredPostDiscontinuity_;
-    segmentOffset += videojs.Hls.Playlist.duration(media, media.mediaSequence, media.mediaSequence + tech.mediaIndex);
-
-    // create cue points for all the ID3 frames in this metadata event
-    for (i = 0; i < metadata.frames.length; i++) {
-      frame = metadata.frames[i];
-      time = tech.segmentParser_.mediaTimelineOffset + ((metadata.pts - tech.segmentParser_.timestampOffset) * 0.001);
-      cue = new window.VTTCue(time, time, frame.value || frame.url || '');
-      cue.frame = frame;
-      textTrack.addCue(cue);
-    }
+    // store this event for processing once the muxing has finished
+    tech.segmentBuffer_[0].pendingMetadata.push({
+      textTrack: textTrack,
+      metadata: metadata
+    });
   });
 
   // when seeking, clear out all cues ahead of the earliest position
@@ -312,6 +311,61 @@ videojs.Hls.prototype.setupMetadataCueTranslation_ = function() {
   });
 };
 
+videojs.Hls.prototype.addCuesForMetadata_ = function(segmentInfo) {
+  var i, cue, frame, metadata, minPts, segment, segmentOffset, textTrack, time;
+  segmentOffset = this.playlists.expiredPreDiscontinuity_;
+  segmentOffset += this.playlists.expiredPostDiscontinuity_;
+  segmentOffset += videojs.Hls.Playlist.duration(segmentInfo.playlist,
+                                                 segmentInfo.playlist.mediaSequence,
+                                                 segmentInfo.playlist.mediaSequence + segmentInfo.mediaIndex);
+  segment = segmentInfo.playlist.segments[segmentInfo.mediaIndex];
+  minPts = Math.min(isFinite(segment.minVideoPts) ? segment.minVideoPts : Infinity,
+                    isFinite(segment.minAudioPts) ? segment.minAudioPts : Infinity);
+
+  while (segmentInfo.pendingMetadata.length) {
+    metadata = segmentInfo.pendingMetadata[0].metadata;
+    textTrack = segmentInfo.pendingMetadata[0].textTrack;
+
+    // create cue points for all the ID3 frames in this metadata event
+    for (i = 0; i < metadata.frames.length; i++) {
+      frame = metadata.frames[i];
+      time = segmentOffset + ((metadata.pts - minPts) * 0.001);
+      cue = new window.VTTCue(time, time, frame.value || frame.url || '');
+      cue.frame = frame;
+      cue.pts_ = metadata.pts;
+      textTrack.addCue(cue);
+    }
+    segmentInfo.pendingMetadata.shift();
+  }
+};
+
+/**
+ * Seek to the latest media position if this is a live video and the
+ * player and video are loaded and initialized.
+ */
+videojs.Hls.prototype.setupFirstPlay = function() {
+  var seekable, media;
+  media = this.playlists.media();
+
+  // check that everything is ready to begin buffering
+  if (!this.hasPlayed_ &&
+      this.sourceBuffer &&
+      media &&
+      this.paused() === false) {
+
+    // only run this block once per video
+    this.hasPlayed_ = true;
+
+    if (this.duration() === Infinity) {
+      // seek to the latest media position for live videos
+      seekable = this.seekable();
+      if (seekable.length) {
+        this.setCurrentTime(seekable.end(0));
+      }
+    }
+  }
+};
+
 /**
  * Reset the mediaIndex if play() is called after the video has
  * ended.
@@ -321,21 +375,20 @@ videojs.Hls.prototype.play = function() {
     this.mediaIndex = 0;
   }
 
-  // seek to the latest safe point in the media timeline when first
-  // playing live streams
-  if (this.duration() === Infinity &&
-      this.playlists.media() &&
-      !this.player().hasClass('vjs-has-started')) {
+  if (!this.hasPlayed_) {
+    videojs.Flash.prototype.play.apply(this, arguments);
+    return this.setupFirstPlay();
+  }
 
-    var time = this.seekable().end(0);
-    if (typeof peer5 !== 'undefined') {
-      time = peer5.getConfig('MEDIA_LIVE_START_POS');
-    }
-    this.setCurrentTime(time);
+  // if the viewer has paused and we fell out of the live window,
+  // seek forward to the earliest available position
+  if (this.duration() === Infinity &&
+      this.currentTime() < this.seekable().start(0)) {
+    this.setCurrentTime(this.seekable().start(0));
   }
 
   // delegate back to the Flash implementation
-  return videojs.Flash.prototype.play.apply(this, arguments);
+  videojs.Flash.prototype.play.apply(this, arguments);
 };
 
 videojs.Hls.prototype.currentTime = function() {
@@ -361,6 +414,13 @@ videojs.Hls.prototype.setCurrentTime = function(currentTime) {
     return 0;
   }
 
+  // clamp seeks to the available seekable time range
+  if (currentTime < this.seekable().start(0)) {
+    currentTime = this.seekable().start(0);
+  } else if (currentTime > this.seekable().end(0)) {
+    currentTime = this.seekable().end(0);
+  }
+
   // save the seek target so currentTime can report it correctly
   // while the seek is pending
   this.lastSeekedTime_ = currentTime;
@@ -369,7 +429,9 @@ videojs.Hls.prototype.setCurrentTime = function(currentTime) {
   this.mediaIndex = this.playlists.getMediaIndexForTime_(currentTime);
 
   // abort any segments still being decoded
-  this.sourceBuffer.abort();
+  if (this.sourceBuffer) {
+    this.sourceBuffer.abort();
+  }
 
   // cancel outstanding requests and buffer appends
   this.cancelSegmentXhr();
@@ -396,7 +458,7 @@ videojs.Hls.prototype.duration = function() {
 };
 
 videojs.Hls.prototype.seekable = function() {
-  var absoluteSeekable, startOffset, media;
+  var currentSeekable, startOffset, media;
 
   if (!this.playlists) {
     return videojs.createTimeRange();
@@ -408,10 +470,14 @@ videojs.Hls.prototype.seekable = function() {
 
   // report the seekable range relative to the earliest possible
   // position when the stream was first loaded
-  absoluteSeekable = videojs.Hls.Playlist.seekable(media);
+  currentSeekable = videojs.Hls.Playlist.seekable(media);
+  if (!currentSeekable.length) {
+    return currentSeekable;
+  }
+
   startOffset = this.playlists.expiredPostDiscontinuity_ - this.playlists.expiredPreDiscontinuity_;
   return videojs.createTimeRange(startOffset,
-                                 startOffset + (absoluteSeekable.end(0) - absoluteSeekable.start(0)));
+                                 startOffset + (currentSeekable.end(0) - currentSeekable.start(0)));
 };
 
 /**
@@ -491,7 +557,9 @@ videojs.Hls.prototype.selectPlaylist = function () {
     oldvariant,
     bandwidthBestVariant,
     resolutionPlusOne,
-    resolutionBestVariant;
+    resolutionBestVariant,
+    playerWidth,
+    playerHeight;
 
   sortedPlaylists.sort(videojs.Hls.comparePlaylistBandwidth);
 
@@ -527,6 +595,9 @@ videojs.Hls.prototype.selectPlaylist = function () {
   // (this could be the lowest bitrate rendition as  we go through all of them above)
   variant = null;
 
+  playerWidth = parseInt(getComputedStyle(player.el()).width, 10);
+  playerHeight = parseInt(getComputedStyle(player.el()).height, 10);
+
   // iterate through the bandwidth-filtered playlists and find
   // best rendition by player dimension
   while (i--) {
@@ -544,14 +615,14 @@ videojs.Hls.prototype.selectPlaylist = function () {
 
     // since the playlists are sorted, the first variant that has
     // dimensions less than or equal to the player size is the best
-    if (variant.attributes.RESOLUTION.width === player.width() &&
-        variant.attributes.RESOLUTION.height === player.height()) {
+    if (variant.attributes.RESOLUTION.width === playerWidth &&
+        variant.attributes.RESOLUTION.height === playerHeight) {
       // if we have the exact resolution as the player use it
       resolutionPlusOne = null;
       resolutionBestVariant = variant;
       break;
-    } else if (variant.attributes.RESOLUTION.width < player.width() &&
-        variant.attributes.RESOLUTION.height < player.height()) {
+    } else if (variant.attributes.RESOLUTION.width < playerWidth &&
+        variant.attributes.RESOLUTION.height < playerHeight) {
       // if we don't have an exact match, see if we have a good higher quality variant to use
       if (oldvariant && oldvariant.attributes && oldvariant.attributes.RESOLUTION &&
           oldvariant.attributes.RESOLUTION.width && oldvariant.attributes.RESOLUTION.height) {
@@ -647,7 +718,7 @@ videojs.Hls.prototype.fillBuffer = function(offset) {
   // being buffering so we don't preload data that will never be
   // played
   if (!this.playlists.media().endList &&
-      !this.player().hasClass('vjs-has-started') &&
+      !player.hasClass('vjs-has-started') &&
       offset === undefined) {
     return;
   }
@@ -764,7 +835,10 @@ videojs.Hls.prototype.loadSegment = function(segmentUri, offset) {
       // when a key is defined for this segment, the encrypted bytes
       encryptedBytes: null,
       // optionally, the decrypter that is unencrypting the segment
-      decrypter: null
+      decrypter: null,
+      // metadata events discovered during muxing that need to be
+      // translated into cue points
+      pendingMetadata: []
     };
     if (segmentInfo.playlist.segments[segmentInfo.mediaIndex].key) {
       segmentInfo.encryptedBytes = new Uint8Array(this.response);
@@ -854,20 +928,6 @@ videojs.Hls.prototype.drainBuffer = function(event) {
   }
 
   event = event || {};
-  segmentOffset = this.playlists.expiredPreDiscontinuity_;
-  segmentOffset += this.playlists.expiredPostDiscontinuity_;
-  segmentOffset += videojs.Hls.Playlist.duration(playlist, playlist.mediaSequence, playlist.mediaSequence + mediaIndex);
-  segmentOffset *= 1000;
-
-  // if this segment starts is the start of a new discontinuity
-  // sequence, the segment parser's timestamp offset must be
-  // re-calculated
-  if (segment.discontinuity) {
-    this.segmentParser_.mediaTimelineOffset = segmentOffset * 0.001;
-    this.segmentParser_.timestampOffset = null;
-  } else if (this.segmentParser_.mediaTimelineOffset === null) {
-    this.segmentParser_.mediaTimelineOffset = segmentOffset * 0.001;
-  }
 
   // transmux the segment data from MP2T to FLV
   this.segmentParser_.parseSegmentBinaryData(bytes);
@@ -875,33 +935,48 @@ videojs.Hls.prototype.drainBuffer = function(event) {
 
   tags = [];
 
+  if (this.segmentParser_.tagsAvailable()) {
+    // record PTS information for the segment so we can calculate
+    // accurate durations and seek reliably
+    if (this.segmentParser_.stats.h264Tags()) {
+      segment.minVideoPts = this.segmentParser_.stats.minVideoPts();
+      segment.maxVideoPts = this.segmentParser_.stats.maxVideoPts();
+    }
+    if (this.segmentParser_.stats.aacTags()) {
+      segment.minAudioPts = this.segmentParser_.stats.minAudioPts();
+      segment.maxAudioPts = this.segmentParser_.stats.maxAudioPts();
+    }
+  }
+
   while (this.segmentParser_.tagsAvailable()) {
     tags.push(this.segmentParser_.getNextTag());
   }
 
-  if (tags.length > 0) {
-    // Use the presentation timestamp of the ts segment to calculate its
-    // exact duration, since this may differ by fractions of a second
-    // from what is reported in the playlist
-    segment.preciseDuration = videojs.Hls.FlvTag.durationFromTags(tags) * 0.001;
-  }
-
+  this.addCuesForMetadata_(segmentInfo);
   this.updateDuration(this.playlists.media());
 
   // if we're refilling the buffer after a seek, scan through the muxed
   // FLV tags until we find the one that is closest to the desired
   // playback time
   if (typeof offset === 'number') {
-    ptsTime = offset - segmentOffset + tags[0].pts;
+    if (tags.length) {
+      // determine the offset within this segment we're seeking to
+      segmentOffset = this.playlists.expiredPostDiscontinuity_ + this.playlists.expiredPreDiscontinuity_;
+      segmentOffset += videojs.Hls.Playlist.duration(playlist,
+                                                     playlist.mediaSequence,
+                                                     playlist.mediaSequence + mediaIndex);
+      segmentOffset = offset - (segmentOffset * 1000);
+      ptsTime = segmentOffset + tags[0].pts;
 
-    while (tags[i].pts < ptsTime) {
-      i++;
+      while (tags[i + 1] && tags[i].pts < ptsTime) {
+        i++;
+      }
+
+      // tell the SWF the media position of the first tag we'll be delivering
+      this.el().vjs_setProperty('currentTime', ((tags[i].pts - ptsTime + offset) * 0.001));
+
+      tags = tags.slice(i);
     }
-
-    // tell the SWF where we will be seeking to
-    this.el().vjs_setProperty('currentTime', (tags[i].pts - tags[0].pts + segmentOffset) * 0.001);
-
-    tags = tags.slice(i);
 
     this.lastSeekedTime_ = null;
   }
@@ -1118,29 +1193,6 @@ videojs.Hls.getMediaIndexByTime = function() {
   videojs.log.warn('getMediaIndexByTime is deprecated. ' +
                    'Use PlaylistLoader.getMediaIndexForTime_ instead.');
   return 0;
-};
-
-/**
- * Determine the current time in seconds in one playlist by a media index. This
- * function iterates through the segments of a playlist up to the specified index
- * and then returns the time up to that point.
- *
- * @param playlist {object} The playlist of the segments being searched.
- * @param mediaIndex {number} The index of the target segment in the playlist.
- * @returns {number} The current time to that point, or 0 if none appropriate.
- */
-videojs.Hls.prototype.getCurrentTimeByMediaIndex_ = function(playlist, mediaIndex) {
-  var index, time = 0;
-
-  if (!playlist.segments || mediaIndex === 0) {
-    return 0;
-  }
-
-  for (index = 0; index < mediaIndex; index++) {
-    time += playlist.segments[index].duration;
-  }
-
-  return time;
 };
 
 /**
