@@ -62,7 +62,7 @@ videojs.Hls = videojs.Flash.extend({
 videojs.options.techOrder.unshift('hls');
 
 // the desired length of video to maintain in the buffer, in seconds
-videojs.Hls.GOAL_BUFFER_LENGTH = typeof peer5 !== 'undefined' ? peer5.getConfig("MEDIA_MAXBUFFER") || 30 : 30;
+videojs.Hls.GOAL_BUFFER_LENGTH = window.peer5 ? peer5.getConfig("MEDIA_MAXBUFFER") || 30 : 30;
 
 videojs.Hls.prototype.src = function(src) {
   var
@@ -358,9 +358,13 @@ videojs.Hls.prototype.setupFirstPlay = function() {
 
     if (this.duration() === Infinity) {
       // seek to the latest media position for live videos
-      seekable = this.seekable();
-      if (seekable.length) {
-        this.setCurrentTime(seekable.end(0));
+      if (window.peer5) {
+        this.setCurrentTime(window.peer5.getConfig('MEDIA_LIVE_START_POS'));
+      } else {
+        seekable = this.seekable();
+        if (seekable.length) {
+          this.setCurrentTime(seekable.end(0));
+        }
       }
     }
   }
