@@ -10,8 +10,7 @@ module.exports = function(config) {
       singleRun: true,
       base: 'SauceLabs',
       browserName: 'chrome',
-      platform: 'Windows 7',
-      version: '34'
+      platform: 'Windows 7'
     },
 
     firefox_sl: {
@@ -61,7 +60,7 @@ module.exports = function(config) {
     customLaunchers: customLaunchers,
 
     // Start these browsers
-    browsers: ['chrome_sl', 'ipad_sl'], //Object.keys(customLaunchers),
+    browsers: ['chrome_sl', 'firefox_sl'], //Object.keys(customLaunchers),
 
     // List of files / patterns to load in the browser
     // Add any new src files to this list.
@@ -133,7 +132,7 @@ module.exports = function(config) {
 
     // global config for SauceLabs
     sauceLabs: {
-      startConnect: true,
+      startConnect: false,
       tunnelIdentifier: process.env.TRAVIS_JOB_NUMBER,
       build: process.env.TRAVIS_BUILD_NUMBER,
       testName: process.env.TRAVIS_BUILD_NUMBER + process.env.TRAVIS_BRANCH,

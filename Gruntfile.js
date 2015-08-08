@@ -3,11 +3,12 @@
 var basename = require('path').basename;
 
 module.exports = function(grunt) {
+  var pkg = grunt.file.readJSON('package.json');
 
   // Project configuration.
   grunt.initConfig({
     // Metadata.
-    pkg: grunt.file.readJSON('package.json'),
+    pkg: pkg,
     banner: '/*! <%= pkg.name %> - v<%= pkg.version %> - ' +
       '<%= grunt.template.today("yyyy-mm-dd") %>\n' +
       '* Copyright (c) <%= grunt.template.today("yyyy") %> Brightcove;' +
@@ -59,7 +60,7 @@ module.exports = function(grunt) {
           'node_modules/pkcs7/dist/pkcs7.unpad.js',
           'src/decrypter.js'
         ],
-        dest: 'dist/peer5.videojs.hls.js'
+        dest: 'dist/peer5.videojs.hls.<%= pkg.version %>.js'
       }
     },
     uglify: {
@@ -72,7 +73,7 @@ module.exports = function(grunt) {
       },
       peer5: {
         src: '<%= concat.peer5.dest %>',
-        dest: 'dist/peer5.videojs.hls.min.js'
+        dest: 'dist/peer5.videojs.hls.<%= pkg.version %>.min.js'
       }
     },
     jshint: {
@@ -107,6 +108,12 @@ module.exports = function(grunt) {
           port: 9999,
           keepalive: true
         }
+      },
+      test: {
+        options: {
+          hostname: '*',
+          port: 9999
+        }
       }
     },
     open : {
@@ -140,6 +147,23 @@ module.exports = function(grunt) {
     version: {
       project: {
         src: ['package.json']
+      }
+    },
+    'github-release': {
+      options: {
+        repository: 'videojs/videojs-contrib-hls',
+        auth: {
+          user: process.env.VJS_GITHUB_USER,
+          password: process.env.VJS_GITHUB_TOKEN
+        },
+        release: {
+          'tag_name': 'v' + pkg.version,
+          name: pkg.version,
+          body: require('chg').find(pkg.version).changesRaw
+        }
+      },
+      files: {
+        'dist': ['videojs.hls.min.js']
       }
     },
     karma: {
@@ -219,8 +243,55 @@ module.exports = function(grunt) {
         configFile: 'test/karma.conf.js',
         autoWatch: false
       }
-    }
+    },
+    protractor: {
+      options: {
+        configFile: 'test/functional/protractor.config.js',
+        webdriverManagerUpdate: process.env.TRAVIS ? false : true
+      },
 
+      chrome: {
+        options: {
+          args: {
+            capabilities: {
+              browserName: 'chrome'
+            }
+          }
+        }
+      },
+
+      firefox: {
+        options: {
+          args: {
+            capabilities: {
+              browserName: 'firefox'
+            }
+          }
+        }
+      },
+
+      safari: {
+        options: {
+          args: {
+            capabilities: {
+              browserName: 'safari'
+            }
+          }
+        }
+      },
+
+      ie: {
+        options: {
+          args: {
+            capabilities: {
+              browserName: 'internet explorer'
+            }
+          }
+        }
+      },
+
+      saucelabs:{}
+    }
   });
 
   // These plugins provide necessary tasks.
@@ -236,6 +307,7 @@ module.exports = function(grunt) {
   grunt.loadNpmTasks('grunt-contrib-watch');
   grunt.loadNpmTasks('grunt-github-releaser');
   grunt.loadNpmTasks('grunt-version');
+  grunt.loadNpmTasks('grunt-protractor-runner');
   grunt.loadNpmTasks('chg');
 
 
@@ -252,7 +324,7 @@ module.exports = function(grunt) {
         // translate this manifest
         jsManifests += '  \'' + basename(filename, '.m3u8') + '\': ' +
           grunt.file.read(abspath)
-            .split('\n')
+            .split(/\r\n|\n/)
 
             // quote and concatenate
             .map(function(line) {
@@ -310,10 +382,13 @@ module.exports = function(grunt) {
 
     grunt.task.run(['jshint', 'manifests-to-js']);
 
-    if (process.env.TRAVIS_PULL_REQUEST) {
-      grunt.task.run(['karma:phantomjs']);
-    } else if (process.env.TRAVIS) {
-      grunt.task.run(['karma:saucelabs']);
+    if (process.env.TRAVIS) {
+      if (process.env.TRAVIS_PULL_REQUEST === 'false') {
+        grunt.task.run(['karma:saucelabs']);
+        grunt.task.run(['connect:test', 'protractor:saucelabs']);
+      } else {
+        grunt.task.run(['karma:phantomjs']);
+      }
     } else {
       if (tasks.length === 0) {
         tasks.push('chrome');
@@ -321,9 +396,13 @@ module.exports = function(grunt) {
       if (tasks.length === 1) {
         tasks = tasks[0].split(',');
       }
-      tasks = tasks.map(function(el) {
-        return 'karma:' + el;
-      });
+      tasks = tasks.reduce(function(acc, el) {
+        acc.push('karma:' + el);
+        if (/chrome|firefox|safari|ie/.test(el)) {
+          acc.push('protractor:' + el);
+        }
+        return acc;
+      }, ['connect:test']);
 
       grunt.task.run(tasks);
     }
