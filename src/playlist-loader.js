@@ -18,6 +18,7 @@
     resolveUrl = videojs.Hls.resolveUrl,
     xhr = videojs.Hls.xhr,
     Playlist = videojs.Hls.Playlist,
+    mergeOptions = videojs.util.mergeOptions,
 
     /**
      * Returns a new master playlist that is the result of merging an
@@ -33,7 +34,7 @@
     updateMaster = function(master, media) {
       var
         changed = false,
-        result = videojs.util.mergeOptions(master, {}),
+        result = mergeOptions(master, {}),
         i,
         playlist;
 
@@ -50,12 +51,45 @@
             continue;
           }
 
-          result.playlists[i] = videojs.util.mergeOptions(playlist, media);
+          result.playlists[i] = mergeOptions(playlist, media);
           result.playlists[media.uri] = result.playlists[i];
+
+          // if the update could overlap existing segment information,
+          // merge the two lists
+          if (playlist.segments) {
+            result.playlists[i].segments = updateSegments(playlist.segments,
+                                                          media.segments,
+                                                          media.mediaSequence - playlist.mediaSequence);
+          }
           changed = true;
         }
       }
       return changed ? result : null;
+    },
+
+    /**
+     * Returns a new array of segments that is the result of merging
+     * properties from an older list of segments onto an updated
+     * list. No properties on the updated playlist will be overridden.
+     * @param original {array} the outdated list of segments
+     * @param update {array} the updated list of segments
+     * @param offset {number} (optional) the index of the first update
+     * segment in the original segment list. For non-live playlists,
+     * this should always be zero and does not need to be
+     * specified. For live playlists, it should be the difference
+     * between the media sequence numbers in the original and updated
+     * playlists.
+     * @return a list of merged segment objects
+     */
+    updateSegments = function(original, update, offset) {
+      var result = update.slice(), length, i;
+      offset = offset || 0;
+      length = Math.min(original.length, update.length + offset);
+
+      for (i = offset; i < length; i++) {
+        result[i - offset] = mergeOptions(original[i], result[i - offset]);
+      }
+      return result;
     },
 
     PlaylistLoader = function(srcUrl, withCredentials) {
@@ -355,8 +389,8 @@
                                                          this.media_.mediaSequence,
                                                          lastDiscontinuity);
       this.expiredPostDiscontinuity_ += Playlist.duration(this.media_,
-                                                         lastDiscontinuity,
-                                                         this.media_.mediaSequence + expiredCount);
+                                                          lastDiscontinuity,
+                                                          update.mediaSequence);
     }
 
     this.media_ = this.master.playlists[update.uri];
@@ -397,11 +431,12 @@
     for (i = 0; i < this.media_.segments.length; i++) {
       time -= Playlist.duration(this.media_,
                                 this.media_.mediaSequence + i,
-                                this.media_.mediaSequence + i + 1);
+                                this.media_.mediaSequence + i + 1,
+                                false);
 
       // HLS version 3 and lower round segment durations to the
       // nearest decimal integer. When the correct media index is
-      // ambiguous, prefer the lower one.
+      // ambiguous, prefer the higher one.
       if (time <= 0) {
         return i;
       }

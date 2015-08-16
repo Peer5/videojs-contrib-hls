@@ -50,10 +50,19 @@ var
     };
 
     tech = player.el().querySelector('.vjs-tech');
-    tech.vjs_getProperty = function() {};
+    tech.vjs_getProperty = function(name) {
+      if (name === 'paused') {
+        return this.paused_;
+      }
+    };
     tech.vjs_setProperty = function() {};
     tech.vjs_src = function() {};
-    tech.vjs_play = function() {};
+    tech.vjs_play = function() {
+      this.paused_ = false;
+    };
+    tech.vjs_pause = function() {
+      this.paused_ = true;
+    };
     tech.vjs_discontinuity = function() {};
     videojs.Flash.onReady(tech.id);
 
@@ -94,10 +103,12 @@ var
   },
 
   mockSegmentParser = function(tags) {
+    var MockSegmentParser;
+
     if (tags === undefined) {
-      tags = [];
+      tags = [{ pts: 0, bytes: new Uint8Array(1) }];
     }
-    return function() {
+    MockSegmentParser = function() {
       this.getFlvHeader = function() {
         return 'flv';
       };
@@ -112,10 +123,37 @@ var
       this.getNextTag = function() {
         return tags.shift();
       };
-      this.metadataStream = {
-        on: Function.prototype
+      this.metadataStream = new videojs.Hls.Stream();
+      this.metadataStream.init();
+      this.metadataStream.descriptor = new Uint8Array([
+        1, 2, 3, 0xbb
+      ]);
+
+      this.stats = {
+        h264Tags: function() {
+          return tags.length;
+        },
+        minVideoPts: function() {
+          return tags[0].pts;
+        },
+        maxVideoPts: function() {
+          return tags[tags.length - 1].pts;
+        },
+        aacTags: function() {
+          return tags.length;
+        },
+        minAudioPts: function() {
+          return tags[0].pts;
+        },
+        maxAudioPts: function() {
+          return tags[tags.length - 1].pts;
+        },
       };
     };
+
+    MockSegmentParser.STREAM_TYPES = videojs.Hls.SegmentParser.STREAM_TYPES;
+
+    return MockSegmentParser;
   },
 
   // return an absolute version of a page-relative URL
@@ -195,6 +233,46 @@ test('starts playing if autoplay is specified', function() {
 
   standardXHRResponse(requests[0]);
   strictEqual(1, plays, 'play was called');
+});
+
+test('autoplay seeks to the live point after playlist load', function() {
+  var currentTime = 0;
+  player.options().autoplay = true;
+  player.hls.setCurrentTime = function(time) {
+    currentTime = time;
+    return currentTime;
+  };
+  player.hls.currentTime = function() {
+    return currentTime;
+  };
+  player.src({
+    src: 'liveStart30sBefore.m3u8',
+    type: 'application/vnd.apple.mpegurl'
+  });
+  openMediaSource(player);
+  standardXHRResponse(requests.shift());
+
+  notEqual(currentTime, 0, 'seeked on autoplay');
+});
+
+test('autoplay seeks to the live point after media source open', function() {
+  var currentTime = 0;
+  player.options().autoplay = true;
+  player.hls.setCurrentTime = function(time) {
+    currentTime = time;
+    return currentTime;
+  };
+  player.hls.currentTime = function() {
+    return currentTime;
+  };
+  player.src({
+    src: 'liveStart30sBefore.m3u8',
+    type: 'application/vnd.apple.mpegurl'
+  });
+  standardXHRResponse(requests.shift());
+  openMediaSource(player);
+
+  notEqual(currentTime, 0, 'seeked on autoplay');
 });
 
 test('creates a PlaylistLoader on init', function() {
@@ -1001,6 +1079,84 @@ test('only appends one segment at a time', function() {
   equal(appends, 0, 'did not append while updating');
 });
 
+test('records the min and max PTS values for a segment', function() {
+  var tags = [];
+  videojs.Hls.SegmentParser = mockSegmentParser(tags);
+  player.src({
+    src: 'manifest/media.m3u8',
+    type: 'application/vnd.apple.mpegurl'
+  });
+  openMediaSource(player);
+  standardXHRResponse(requests.pop()); // media.m3u8
+
+  tags.push({ pts: 0, bytes: new Uint8Array(1) });
+  tags.push({ pts: 10, bytes: new Uint8Array(1) });
+  standardXHRResponse(requests.pop()); // segment 0
+
+  equal(player.hls.playlists.media().segments[0].minVideoPts, 0, 'recorded min video pts');
+  equal(player.hls.playlists.media().segments[0].maxVideoPts, 10, 'recorded max video pts');
+  equal(player.hls.playlists.media().segments[0].minAudioPts, 0, 'recorded min audio pts');
+  equal(player.hls.playlists.media().segments[0].maxAudioPts, 10, 'recorded max audio pts');
+});
+
+test('records PTS values for video-only segments', function() {
+  var tags = [];
+  videojs.Hls.SegmentParser = mockSegmentParser(tags);
+  player.src({
+    src: 'manifest/media.m3u8',
+    type: 'application/vnd.apple.mpegurl'
+  });
+  openMediaSource(player);
+  standardXHRResponse(requests.pop()); // media.m3u8
+
+  player.hls.segmentParser_.stats.aacTags = function() {
+    return 0;
+  };
+  player.hls.segmentParser_.stats.minAudioPts = function() {
+    throw new Error('No audio tags');
+  };
+  player.hls.segmentParser_.stats.maxAudioPts = function() {
+    throw new Error('No audio tags');
+  };
+  tags.push({ pts: 0, bytes: new Uint8Array(1) });
+  tags.push({ pts: 10, bytes: new Uint8Array(1) });
+  standardXHRResponse(requests.pop()); // segment 0
+
+  equal(player.hls.playlists.media().segments[0].minVideoPts, 0, 'recorded min video pts');
+  equal(player.hls.playlists.media().segments[0].maxVideoPts, 10, 'recorded max video pts');
+  strictEqual(player.hls.playlists.media().segments[0].minAudioPts, undefined, 'min audio pts is undefined');
+  strictEqual(player.hls.playlists.media().segments[0].maxAudioPts, undefined, 'max audio pts is undefined');
+});
+
+test('records PTS values for audio-only segments', function() {
+  var tags = [];
+  videojs.Hls.SegmentParser = mockSegmentParser(tags);
+  player.src({
+    src: 'manifest/media.m3u8',
+    type: 'application/vnd.apple.mpegurl'
+  });
+  openMediaSource(player);
+  standardXHRResponse(requests.pop()); // media.m3u8
+
+  player.hls.segmentParser_.stats.h264Tags = function() {
+    return 0;
+  };
+  player.hls.segmentParser_.stats.minVideoPts = function() {
+    throw new Error('No video tags');
+  };
+  player.hls.segmentParser_.stats.maxVideoPts = function() {
+    throw new Error('No video tags');
+  };
+  tags.push({ pts: 0, bytes: new Uint8Array(1) });
+  tags.push({ pts: 10, bytes: new Uint8Array(1) });
+  standardXHRResponse(requests.pop()); // segment 0
+
+  equal(player.hls.playlists.media().segments[0].minAudioPts, 0, 'recorded min audio pts');
+  equal(player.hls.playlists.media().segments[0].maxAudioPts, 10, 'recorded max audio pts');
+  strictEqual(player.hls.playlists.media().segments[0].minVideoPts, undefined, 'min video pts is undefined');
+  strictEqual(player.hls.playlists.media().segments[0].maxVideoPts, undefined, 'max video pts is undefined');
+});
+
 test('waits to download new segments until the media playlist is stable', function() {
   var media;
   player.src({
@@ -1140,58 +1296,9 @@ test('flushes the parser after each segment', function() {
   strictEqual(flushes, 1, 'tags are flushed at the end of a segment');
 });
 
-test('calculates preciseDuration for a new segment', function() {
-  var tags = [
-    { pts : 200 * 1000, bytes: new Uint8Array(1) },
-    { pts : 300 * 1000, bytes: new Uint8Array(1) }
-  ];
-  videojs.Hls.SegmentParser = mockSegmentParser(tags);
-
-  player.src({
-    src: 'manifest/media.m3u8',
-    type: 'application/vnd.apple.mpegurl'
-  });
-  openMediaSource(player);
-
-  standardXHRResponse(requests[0]);
-  strictEqual(player.duration(), 40, 'player duration is read from playlist on load');
-  standardXHRResponse(requests[1]);
-  strictEqual(player.hls.playlists.media().segments[0].preciseDuration, 200, 'preciseDuration is calculated and stored');
-  strictEqual(player.duration(), 230, 'player duration is calculated using preciseDuration');
-});
-
-test('calculates preciseDuration correctly around discontinuities', function() {
-  var tags = [];
-  videojs.Hls.SegmentParser = mockSegmentParser(tags);
-  player.src({
-    src: 'manifest/media.m3u8',
-    type: 'application/vnd.apple.mpegurl'
-  });
-  openMediaSource(player);
-  requests.shift().respond(200, null,
-                           '#EXTM3U\n' +
-                           '#EXTINF:10,\n' +
-                           '0.ts\n' +
-                           '#EXT-X-DISCONTINUITY\n' +
-                           '#EXTINF:10,\n' +
-                           '1.ts\n' +
-                           '#EXT-X-ENDLIST\n');
-  tags.push({ pts: 10 * 1000, bytes: new Uint8Array(1) });
-  standardXHRResponse(requests.shift()); // segment 0
-  player.hls.checkBuffer_();
-
-  // the PTS value of the second segment is *earlier* than the first
-  tags.push({ pts: 0 * 1000, bytes: new Uint8Array(1) });
-  tags.push({ pts: 5 * 1000, bytes: new Uint8Array(1) });
-  standardXHRResponse(requests.shift()); // segment 1
-
-  equal(player.hls.playlists.media().segments[1].preciseDuration,
-        5 + 5, // duration includes the time to display the second tag
-        'duration is independent of previous segments');
-});
-
 test('exposes in-band metadata events as cues', function() {
   var track;
+  videojs.Hls.SegmentParser = mockSegmentParser();
   player.src({
     src: 'manifest/media.m3u8',
     type: 'application/vnd.apple.mpegurl'
@@ -1199,10 +1306,6 @@ test('exposes in-band metadata events as cues', function() {
   openMediaSource(player);
 
   player.hls.segmentParser_.parseSegmentBinaryData = function() {
-    // fake out a descriptor
-    player.hls.segmentParser_.metadataStream.descriptor = new Uint8Array([
-      1, 2, 3, 0xbb
-    ]);
     // trigger a metadata event
     player.hls.segmentParser_.metadataStream.trigger('data', {
       pts: 2000,
@@ -1251,23 +1354,14 @@ test('exposes in-band metadata events as cues', function() {
 
 test('only adds in-band cues the first time they are encountered', function() {
   var tags = [{ pts: 0, bytes: new Uint8Array(1) }], track;
+  videojs.Hls.SegmentParser = mockSegmentParser(tags);
   player.src({
     src: 'manifest/media.m3u8',
     type: 'application/vnd.apple.mpegurl'
   });
   openMediaSource(player);
 
-  player.hls.segmentParser_.getNextTag = function() {
-    return tags.shift();
-  };
-  player.hls.segmentParser_.tagsAvailable = function() {
-    return tags.length;
-  };
   player.hls.segmentParser_.parseSegmentBinaryData = function() {
-    // fake out a descriptor
-    player.hls.segmentParser_.metadataStream.descriptor = new Uint8Array([
-      1, 2, 3, 0xbb
-    ]);
     // trigger a metadata event
     player.hls.segmentParser_.metadataStream.trigger('data', {
       pts: 2000,
@@ -1295,38 +1389,22 @@ test('clears in-band cues ahead of current time on seek', function() {
     tags = [],
     events = [],
     track;
+  videojs.Hls.SegmentParser = mockSegmentParser(tags);
   player.src({
     src: 'manifest/media.m3u8',
     type: 'application/vnd.apple.mpegurl'
   });
   openMediaSource(player);
 
-  player.hls.segmentParser_.getNextTag = function() {
-    return tags.shift();
-  };
-  player.hls.segmentParser_.tagsAvailable = function() {
-    return tags.length;
-  };
   player.hls.segmentParser_.parseSegmentBinaryData = function() {
-    // fake out a descriptor
-    player.hls.segmentParser_.metadataStream.descriptor = new Uint8Array([
-      1, 2, 3, 0xbb
-    ]);
     // trigger a metadata event
-    if (events.length) {
+    while (events.length) {
       player.hls.segmentParser_.metadataStream.trigger('data', events.shift());
     }
   };
   standardXHRResponse(requests.shift()); // media
-  tags.push({ pts: 10 * 1000, bytes: new Uint8Array(1) });
-  events.push({
-      pts: 20 * 1000,
-      data: new Uint8Array([]),
-      frames: [{
-        id: 'TXXX',
-        value: 'cue 3'
-      }]
-  });
+  tags.push({ pts: 0, bytes: new Uint8Array(1) },
+            { pts: 10 * 1000, bytes: new Uint8Array(1) });
   events.push({
       pts: 9.9 * 1000,
       data: new Uint8Array([]),
@@ -1335,8 +1413,17 @@ test('clears in-band cues ahead of current time on seek', function() {
         value: 'cue 1'
       }]
   });
+  events.push({
+      pts: 20 * 1000,
+      data: new Uint8Array([]),
+      frames: [{
+        id: 'TXXX',
+        value: 'cue 3'
+      }]
+  });
   standardXHRResponse(requests.shift()); // segment 0
-  tags.push({ pts: 20 * 1000, bytes: new Uint8Array(1) });
+  tags.push({ pts: 10 * 1000 + 1, bytes: new Uint8Array(1) },
+            { pts: 20 * 1000, bytes: new Uint8Array(1) });
   events.push({
       pts: 19.9 * 1000,
       data: new Uint8Array([]),
@@ -1349,37 +1436,25 @@ test('clears in-band cues ahead of current time on seek', function() {
   standardXHRResponse(requests.shift()); // segment 1
 
   track = player.textTracks()[0];
-  equal(track.cues.length, 2, 'added the cues');
+  equal(track.cues.length, 3, 'added the cues');
 
   // seek into segment 1
   player.currentTime(11);
   player.trigger('seeking');
-  equal(track.cues.length, 1, 'removed a cue');
+  equal(track.cues.length, 1, 'removed later cues');
   equal(track.cues[0].startTime, 9.9, 'retained the earlier cue');
 });
 
 test('translates ID3 PTS values to cue media timeline positions', function() {
   var tags = [{ pts: 4 * 1000, bytes: new Uint8Array(1) }], track;
+  videojs.Hls.SegmentParser = mockSegmentParser(tags);
   player.src({
     src: 'manifest/media.m3u8',
     type: 'application/vnd.apple.mpegurl'
   });
   openMediaSource(player);
 
-  player.hls.segmentParser_.getNextTag = function() {
-    return tags.shift();
-  };
-  player.hls.segmentParser_.tagsAvailable = function() {
-    return tags.length;
-  };
   player.hls.segmentParser_.parseSegmentBinaryData = function() {
-    // setup the timestamp offset
-    this.timestampOffset = tags[0].pts;
-
-    // fake out a descriptor
-    player.hls.segmentParser_.metadataStream.descriptor = new Uint8Array([
-      1, 2, 3, 0xbb
-    ]);
     // trigger a metadata event
     player.hls.segmentParser_.metadataStream.trigger('data', {
       pts: 5 * 1000,
@@ -1398,28 +1473,83 @@ test('translates ID3 PTS values to cue media timeline positions', function() {
   equal(track.cues[0].endTime, 1, 'translated startTime');
 });
 
+test('translates ID3 PTS values with expired segments', function() {
+  var tags = [{ pts: 4 * 1000, bytes: new Uint8Array(1) }], track;
+  videojs.Hls.SegmentParser = mockSegmentParser(tags);
+  player.src({
+    src: 'live.m3u8',
+    type: 'application/vnd.apple.mpegurl'
+  });
+  openMediaSource(player);
+  player.play();
+
+  // 20.9 seconds of content have expired
+  player.hls.playlists.expiredPostDiscontinuity_ = 20.9;
+
+  player.hls.segmentParser_.parseSegmentBinaryData = function() {
+    // trigger a metadata event
+    player.hls.segmentParser_.metadataStream.trigger('data', {
+      pts: 5 * 1000,
+      data: new Uint8Array([]),
+      frames: [{
+        id: 'TXXX',
+        value: 'cue text'
+      }]
+    });
+  };
+  requests.shift().respond(200, null,
+                           '#EXTM3U\n' +
+                           '#EXT-X-MEDIA-SEQUENCE:2\n' +
+                           '#EXTINF:10,\n' +
+                           '2.ts\n' +
+                           '#EXTINF:10,\n' +
+                           '3.ts\n');    // media
+  standardXHRResponse(requests.shift()); // segment 0
+
+  track = player.textTracks()[0];
+  equal(track.cues[0].startTime, 20.9 + 1, 'translated startTime');
+  equal(track.cues[0].endTime, 20.9 + 1, 'translated startTime');
+});
+
+test('translates id3 PTS values for audio-only media', function() {
+  var tags = [{ pts: 4 * 1000, bytes: new Uint8Array(1) }], track;
+  videojs.Hls.SegmentParser = mockSegmentParser(tags);
+  player.src({
+    src: 'manifest/media.m3u8',
+    type: 'application/vnd.apple.mpegurl'
+  });
+  openMediaSource(player);
+
+  player.hls.segmentParser_.parseSegmentBinaryData = function() {
+    // trigger a metadata event
+    player.hls.segmentParser_.metadataStream.trigger('data', {
+      pts: 5 * 1000,
+      data: new Uint8Array([]),
+      frames: [{
+        id: 'TXXX',
+        value: 'cue text'
+      }]
+    });
+  };
+  player.hls.segmentParser_.stats.h264Tags = function() { return 0; };
+  player.hls.segmentParser_.stats.minVideoPts = null;
+  standardXHRResponse(requests.shift()); // media
+  standardXHRResponse(requests.shift()); // segment 0
+
+  track = player.textTracks()[0];
+  equal(track.cues[0].startTime, 1, 'translated startTime');
+});
+
 test('translates ID3 PTS values across discontinuities', function() {
   var tags = [], events = [], track;
+  videojs.Hls.SegmentParser = mockSegmentParser(tags);
   player.src({
     src: 'cues-and-discontinuities.m3u8',
     type: 'application/vnd.apple.mpegurl'
   });
   openMediaSource(player);
 
-  player.hls.segmentParser_.getNextTag = function() {
-    return tags.shift();
-  };
-  player.hls.segmentParser_.tagsAvailable = function() {
-    return tags.length;
-  };
   player.hls.segmentParser_.parseSegmentBinaryData = function() {
-    if (this.timestampOffset === null) {
-      this.timestampOffset = tags[0].pts;
-    }
-    // fake out a descriptor
-    player.hls.segmentParser_.metadataStream.descriptor = new Uint8Array([
-      1, 2, 3, 0xbb
-    ]);
     // trigger a metadata event
     if (events.length) {
       player.hls.segmentParser_.metadataStream.trigger('data', events.shift());
@@ -1437,7 +1567,8 @@ test('translates ID3 PTS values across discontinuities', function() {
                            '1.ts\n');
 
   // segment 0 starts at PTS 14000 and has a cue point at 15000
-  tags.push({ pts: 14 * 1000, bytes: new Uint8Array(1) });
+  tags.push({ pts: 14 * 1000, bytes: new Uint8Array(1) },
+            { pts: 24 * 1000, bytes: new Uint8Array(1) });
   events.push({
       pts:  15 * 1000,
       data: new Uint8Array([]),
@@ -1449,14 +1580,14 @@ test('translates ID3 PTS values across discontinuities', function() {
   standardXHRResponse(requests.shift()); // segment 0
 
   // segment 1 is after a discontinuity, starts at PTS 22000
-  // and has a cue point at 15000
+  // and has a cue point at 23000
   tags.push({ pts: 22 * 1000, bytes: new Uint8Array(1) });
   events.push({
       pts:  23 * 1000,
       data: new Uint8Array([]),
       frames: [{
         id: 'TXXX',
-        value: 'cue 0'
+        value: 'cue 1'
       }]
   });
   player.hls.checkBuffer_();
@@ -1684,6 +1815,7 @@ test('live playlist starts three target durations before live', function() {
   equal(player.hls.mediaIndex, 0, 'waits for the first play to start buffering');
   equal(requests.length, 0, 'no outstanding segment request');
 
+  player.hls.paused = function() { return false; };
   player.play();
   mediaPlaylist = player.hls.playlists.media();
   equal(player.hls.mediaIndex, 1, 'mediaIndex is updated at play');
@@ -1726,6 +1858,82 @@ test('live playlist starts with correct currentTime value', function() {
   strictEqual(player.currentTime(),
               videojs.Hls.Playlist.seekable(player.hls.playlists.media()).end(0),
               'currentTime is updated at playback');
+});
+
+test('resets the time to a seekable position when resuming a live stream ' +
+     'after a long break', function() {
+  var seekTarget;
+  player.src({
+    src: 'live0.m3u8',
+    type: 'application/vnd.apple.mpegurl'
+  });
+  openMediaSource(player);
+  requests.shift().respond(200, null,
+                           '#EXTM3U\n' +
+                           '#EXT-X-MEDIA-SEQUENCE:16\n' +
+                           '#EXTINF:10,\n' +
+                           '16.ts\n');
+  // mock out the player to simulate a live stream that has been
+  // playing for awhile
+  player.hls.hasPlayed_ = true;
+  player.hls.seekable = function() {
+    return {
+      start: function() {
+        return 160;
+      },
+      end: function() {
+        return 170;
+      },
+      length: 1
+    };
+  };
+  player.hls.currentTime = function() {
+    return 0;
+  };
+  player.hls.setCurrentTime = function(time) {
+    if (time !== undefined) {
+      seekTarget = time;
+    }
+  };
+
+  player.play();
+  equal(seekTarget, player.seekable().start(0), 'seeked to the start of seekable');
+});
+
+test('clamps seeks to the seekable window', function() {
+  var seekTarget;
+  player.src({
+    src: 'live0.m3u8',
+    type: 'application/vnd.apple.mpegurl'
+  });
+  openMediaSource(player);
+  requests.shift().respond(200, null,
+                           '#EXTM3U\n' +
+                           '#EXT-X-MEDIA-SEQUENCE:16\n' +
+                           '#EXTINF:10,\n' +
+                           '16.ts\n');
+  // mock out a seekable window
+  player.hls.seekable = function() {
+    return {
+      start: function() {
+        return 160;
+      },
+      end: function() {
+        return 170;
+      }
+    };
+  };
+  player.hls.fillBuffer = function(time) {
+    if (time !== undefined) {
+      seekTarget = time;
+    }
+  };
+
+  player.currentTime(180);
+  equal(seekTarget * 0.001, player.seekable().end(0), 'forward seeks are clamped');
+
+  player.currentTime(45);
+  equal(seekTarget * 0.001, player.seekable().start(0), 'backward seeks are clamped');
 });
 
 test('mediaIndex is zero before the first segment loads', function() {
@@ -1919,6 +2127,18 @@ test('clears the segment buffer on seek', function() {
   strictEqual(aborts, 1, 'cleared the segment buffer on a seek');
 });
 
+test('can seek before the source buffer opens', function() {
+  player.src({
+    src: 'media.m3u8',
+    type: 'application/vnd.apple.mpegurl'
+  });
+  standardXHRResponse(requests.shift());
+  player.triggerReady();
+
+  player.currentTime(1);
+  equal(player.currentTime(), 1, 'seeked');
+});
+
 test('continues playing after seek to discontinuity', function() {
   var aborts = 0, tags = [], currentTime, bufferEnd, oldCurrentTime;
 
@@ -1969,6 +2189,48 @@ test('continues playing after seek to discontinuity', function() {
   // the source buffer empties. is 2.ts still in the segment buffer?
   player.trigger('waiting');
   strictEqual(aborts, 1, 'cleared the segment buffer on a seek');
+});
+
+test('seeking does not fail when targeted between segments', function() {
+  var tags = [], currentTime, segmentUrl;
+  videojs.Hls.SegmentParser = mockSegmentParser(tags);
+  player.src({
+    src: 'media.m3u8',
+    type: 'application/vnd.apple.mpegurl'
+  });
+  openMediaSource(player);
+
+  // mock out the currentTime callbacks
+  player.hls.el().vjs_setProperty = function(property, value) {
+    if (property === 'currentTime') {
+      currentTime = value;
+    }
+  };
+  player.hls.el().vjs_getProperty = function(property) {
+    if (property === 'currentTime') {
+      return currentTime;
+    }
+  };
+
+  standardXHRResponse(requests.shift()); // media
+  tags.push({ pts: 100, bytes: new Uint8Array(1) },
+            { pts: 9 * 1000 + 100, bytes: new Uint8Array(1) });
+  standardXHRResponse(requests.shift()); // segment 0
+  player.hls.checkBuffer_();
+  tags.push({ pts: 9.5 * 1000 + 100, bytes: new Uint8Array(1) },
+            { pts: 20 * 1000 + 100, bytes: new Uint8Array(1) });
+  segmentUrl = requests[0].url;
+  standardXHRResponse(requests.shift()); // segment 1
+
+  // seek to a time that is greater than the last tag in segment 0 but
+  // less than the first in segment 1
+  player.currentTime(9.4);
+  equal(requests[0].url, segmentUrl, 'requested the later segment');
+
+  tags.push({ pts: 9.5 * 1000 + 100, bytes: new Uint8Array(1) },
+            { pts: 20 * 1000 + 100, bytes: new Uint8Array(1) });
+  standardXHRResponse(requests.shift()); // segment 1
+  equal(player.currentTime(), 9.5, 'seeked to the later time');
 });
 
 test('resets the switching algorithm if a request times out', function() {
@@ -2627,12 +2889,13 @@ test('treats invalid keys as a key request failure', function() {
   equal(bytes[0], 'flv', 'appended the flv header');
 
   tags.length = 0;
-  tags.push({ pts: 1, bytes: new Uint8Array([1]) });
+  tags.push({ pts: 2833, bytes: new Uint8Array([1]) },
+            { pts: 4833, bytes: new Uint8Array([2]) });
   // second segment request
   standardXHRResponse(requests.shift());
 
   equal(bytes.length, 2, 'appended bytes');
-  deepEqual(new Uint8Array([1]), bytes[1], 'skipped to the second segment');
+  deepEqual(bytes[1], new Uint8Array([1, 2]), 'skipped to the second segment');
 });
 
 test('live stream should not call endOfStream', function(){
