@@ -469,11 +469,12 @@ videojs.Hls.prototype.setupFirstPlay = function() {
     // seek to the latest media position for live videos
     if(window.peer5 && window.peer5.getConfig('MEDIA_LIVE_START_POS') !== -1){
       this.setCurrentTime(window.peer5.getConfig('MEDIA_LIVE_START_POS'));
-    }else{
+    }else {
       seekable = this.seekable();
       if (seekable.length) {
         this.tech_.setCurrentTime(seekable.end(0));
       }
+    }
   }
 };
 

@@ -6,26 +6,22 @@
 
   <link href="node_modules/video.js/dist/video-js.css" rel="stylesheet">
 
-  <script src="//local.peer5.com:8081/peer5.js?id=tn8t2143bb9k31rvz83c"></script>
-<script>
-  peer5.setLogLevel(5);
-</script>
+  <script src="//api.peer5.com/peer5.js?id=ncp2vywz762cq79dgwd7"></script>
   <!-- video.js -->
-  <script src="node_modules/video.js/dist/video.min.js"></script>
+  <script src="node_modules/video.js/dist/video.js"></script>
   <script>
-    console.log('overriding XHR');
     videojs.xhr.XMLHttpRequest = peer5.Request;
   </script>
 
   <!-- transmuxing -->
-  <script src="node_modules/videojs-contrib-media-sources/node_modules/mux.js/lib/stream.js"></script>
-  <script src="node_modules/videojs-contrib-media-sources/node_modules/mux.js/legacy/flv-tag.js"></script>
-  <script src="node_modules/videojs-contrib-media-sources/node_modules/mux.js/legacy/exp-golomb.js"></script>
-  <script src="node_modules/videojs-contrib-media-sources/node_modules/mux.js/legacy/h264-extradata.js"></script>
-  <script src="node_modules/videojs-contrib-media-sources/node_modules/mux.js/legacy/h264-stream.js"></script>
-  <script src="node_modules/videojs-contrib-media-sources/node_modules/mux.js/legacy/aac-stream.js"></script>
-  <script src="node_modules/videojs-contrib-media-sources/node_modules/mux.js/legacy/metadata-stream.js"></script>
-  <script src="node_modules/videojs-contrib-media-sources/node_modules/mux.js/legacy/segment-parser.js"></script>
+  <!--<script src="node_modules/videojs-contrib-media-sources/node_modules/mux.js/lib/stream.js"></script>-->
+  <!--<script src="node_modules/videojs-contrib-media-sources/node_modules/mux.js/legacy/flv-tag.js"></script>-->
+  <!--<script src="node_modules/videojs-contrib-media-sources/node_modules/mux.js/legacy/exp-golomb.js"></script>-->
+  <!--<script src="node_modules/videojs-contrib-media-sources/node_modules/mux.js/legacy/h264-extradata.js"></script>-->
+  <!--<script src="node_modules/videojs-contrib-media-sources/node_modules/mux.js/legacy/h264-stream.js"></script>-->
+  <!--<script src="node_modules/videojs-contrib-media-sources/node_modules/mux.js/legacy/aac-stream.js"></script>-->
+  <!--<script src="node_modules/videojs-contrib-media-sources/node_modules/mux.js/legacy/metadata-stream.js"></script>-->
+  <!--<script src="node_modules/videojs-contrib-media-sources/node_modules/mux.js/legacy/segment-parser.js"></script>-->
 
   <!-- Media Sources plugin -->
   <script src="node_modules/videojs-contrib-media-sources/src/videojs-media-sources.js"></script>
@@ -33,20 +29,21 @@
     videojs.MediaSource.webWorkerURI = 'node_modules/videojs-contrib-media-sources/src/transmuxer_worker.js';
   </script>
 
-  <!-- HLS plugin -->
-  <script src="src/videojs-hls.js"></script>
+  <script src="dist/videojs.hls.min.js"></script>
+  <!--&lt;!&ndash; HLS plugin &ndash;&gt;-->
+  <!--<script src="src/videojs-hls.js"></script>-->
 
-  <!-- m3u8 handling -->
-  <script src="src/xhr.js"></script>
-  <script src="src/stream.js"></script>
-  <script src="src/m3u8/m3u8-parser.js"></script>
-  <script src="src/playlist.js"></script>
-  <script src="src/playlist-loader.js"></script>
+  <!--&lt;!&ndash; m3u8 handling &ndash;&gt;-->
+  <!--<script src="src/xhr.js"></script>-->
+  <!--<script src="src/stream.js"></script>-->
+  <!--<script src="src/m3u8/m3u8-parser.js"></script>-->
+  <!--<script src="src/playlist.js"></script>-->
+  <!--<script src="src/playlist-loader.js"></script>-->
 
-  <script src="node_modules/pkcs7/dist/pkcs7.unpad.js"></script>
-  <script src="src/decrypter.js"></script>
+  <!--<script src="node_modules/pkcs7/dist/pkcs7.unpad.js"></script>-->
+  <!--<script src="src/decrypter.js"></script>-->
 
-  <script src="src/bin-utils.js"></script>
+  <!--<script src="src/bin-utils.js"></script>-->
 
   <style>
     body {
