@@ -1,30 +1,42 @@
-# video.js HLS Tech
+# Peer5 with video.js HLS Tech
 
-A video.js tech that plays HLS video on platforms that don't support it but have Flash.
+A video.js tech that plays HLS using both p2p and http. [Peer5](https://www.peer5.com) leverages WebRTC DataChannels to create a seamless mesh network which is effective in [video delivery](https://www.peer5.com/website/video.html).  
+
+Forked from videojs-contrib-hls: A video.js tech that plays HLS video on platforms that don't support it but have Flash.
 
 [![Build Status](https://travis-ci.org/videojs/videojs-contrib-hls.svg?branch=master)](https://travis-ci.org/videojs/videojs-contrib-hls)
 
 ## Getting Started
-Download [videojs-contrib-media-sources](https://github.com/videojs/videojs-contrib-media-sources/releases) and [videojs-contrib-hls](https://github.com/videojs/videojs-contrib-hls/releases). Include them both in your web page along with video.js:
+Download the [Media Source plugin](https://github.com/videojs/videojs-contrib-media-sources/releases). 
 
+Get your API key from Peer5 by [signing up](https://www.peer5.com/)
+
+On your web page:
 ```html
-<video id=example-video width=600 height=300 class="video-js vjs-default-skin" controls>
-  <source
-     src="https://example.com/index.m3u8"
-     type="application/x-mpegURL">
-</video>
+<!-- head -->
+<script src="//api.peer5.com/peer5.js?id=ncp2vywz762cq79dgwd7"></script><!-- enter your api key instead after ?id= -->
 <script src="video.js"></script>
 <script src="videojs-media-sources.js"></script>
-<script src="videojs-hls.min.js"></script>
+<script src="//api.peer5.com/peer5.videojs.hls.js"></script><!-- replaces videojs-hls.min.js -->
+
+<!-- body -->
+<video id="player" class="video-js vjs-default-skin">
+    <source src="" />
+</video>
 <script>
-var player = videojs('example-video');
-player.play();
+    var player = videojs('#player');
 </script>
 ```
 
-Check out our [live example](http://videojs.github.io/videojs-contrib-hls/) if you're having trouble.
+Check out our [live example](http://demo.peer5.com/examples/video/videojs.html) if you're having trouble.
 
-## Documentation
+## What is Peer5?
+[Peer5](https://www.peer5.com/) is a P2P CDN, based on [WebRTC](http://webrtc.org), desgined for high scale media streaming. End users don't install anything, connect to other users and form efficient mesh network. This peer network can be layed over other CDNs or on top of the origin server.
+
+## How is it different than the main videojs-contrib-hls plugin?
+The only difference is that instead of using simple HTTP requests to the server for every segment, we use hybrid p2p and http requests. We replaced the usage of XMLHTTPRequest in the original plugin with [Peer5 API](https://github.com/Peer5/). It causes segments to be fetched using the peers and not only using the server.
+
+## Documentation for the videojs/videojs-contrib-hls
 [HTTP Live Streaming](https://developer.apple.com/streaming/) (HLS) has
 become a de-facto standard for streaming video on mobile devices
 thanks to its native support on iOS and Android. There are a number of
