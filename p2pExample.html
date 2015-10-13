@@ -9,9 +9,6 @@
   <script src="//api.peer5.com/peer5.js?id=ncp2vywz762cq79dgwd7"></script>
   <!-- video.js -->
   <script src="node_modules/video.js/dist/video.js"></script>
-  <script>
-    videojs.xhr.XMLHttpRequest = peer5.Request;
-  </script>
 
   <!-- transmuxing -->
   <!--<script src="node_modules/videojs-contrib-media-sources/node_modules/mux.js/lib/stream.js"></script>-->
@@ -25,11 +22,12 @@
 
   <!-- Media Sources plugin -->
   <script src="node_modules/videojs-contrib-media-sources/src/videojs-media-sources.js"></script>
-  <script>
-    videojs.MediaSource.webWorkerURI = 'node_modules/videojs-contrib-media-sources/src/transmuxer_worker.js';
-  </script>
 
+  <!-- Contrib-Hls plugin -->
   <script src="dist/videojs.hls.min.js"></script>
+
+  <!-- peer5's videojs plugin -->
+  <script src="//api.peer5.com/peer5.videojs5.plugin.js"></script>
   <!--&lt;!&ndash; HLS plugin &ndash;&gt;-->
   <!--<script src="src/videojs-hls.js"></script>-->
 
@@ -71,7 +69,7 @@
          width="600"
          controls>
     <source
-       src="https://live-fb-na-1-cdn.sa.metacdn.com/live/ngrp:metacdn_all_transcode/manifest.m3u8"
+       src="http://solutions.brightcove.com/jwhisenant/hls/apple/bipbop/bipbopall.m3u8"
        type="application/x-mpegURL">
   </video>
   <script>

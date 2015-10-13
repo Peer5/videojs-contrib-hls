@@ -126,7 +126,7 @@ if (videojs.MediaSource.supportsNativeMediaSources()) {
 videojs.getComponent('Flash').registerSourceHandler(videojs.HlsSourceHandler('flash'));
 
 // the desired length of video to maintain in the buffer, in seconds
-videojs.Hls.GOAL_BUFFER_LENGTH = window.peer5 ? peer5.getConfig("MEDIA_MAXBUFFER") || 30 : 30;
+videojs.Hls.GOAL_BUFFER_LENGTH = 30;
 
 videojs.Hls.prototype.src = function(src) {
   var oldMediaPlaylist;
@@ -466,15 +466,11 @@ videojs.Hls.prototype.setupFirstPlay = function() {
       // 4) the active media playlist is available
       media) {
 
-    // seek to the latest media position for live videos
-    if(window.peer5 && window.peer5.getConfig('MEDIA_LIVE_START_POS') !== -1){
-      this.setCurrentTime(window.peer5.getConfig('MEDIA_LIVE_START_POS'));
-    }else {
+      // seek to the latest media position for live videos
       seekable = this.seekable();
       if (seekable.length) {
         this.tech_.setCurrentTime(seekable.end(0));
       }
-    }
   }
 };
 
