@@ -55,6 +55,10 @@ videojs.Hls = videojs.Flash.extend({
     this.startCheckingBuffer_();
 
     videojs.Hls.prototype.src.call(this, options.source && options.source.src);
+
+    if (window.peer5 && this.src_) {
+      peer5.prefetch(this.src_);
+    }
   }
 });
 
