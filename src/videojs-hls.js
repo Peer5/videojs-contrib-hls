@@ -363,9 +363,13 @@ videojs.Hls.prototype.setupFirstPlay = function() {
 
     if (this.duration() === Infinity) {
       // seek to the latest media position for live videos
-      seekable = this.seekable();
-      if (seekable.length) {
-        this.setCurrentTime(seekable.end(0));
+      if (window.peer5) {
+        this.setCurrentTime(window.peer5.getConfig('MEDIA_LIVE_START_POS'));
+      } else {
+        seekable = this.seekable();
+        if (seekable.length) {
+          this.setCurrentTime(seekable.end(0));
+        }
       }
     }
   }
