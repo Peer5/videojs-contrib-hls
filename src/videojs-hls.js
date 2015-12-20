@@ -64,6 +64,11 @@ videojs.options.techOrder.unshift('hls');
 // the desired length of video to maintain in the buffer, in seconds
 videojs.Hls.GOAL_BUFFER_LENGTH = window.peer5 ? peer5.getConfig("MEDIA_MAXBUFFER") || 30 : 30;
 
+// The number of target durations to exclude from the seekable window
+// for live playlists. Decreasing this value is likely to cause
+// playback stalls.
+videojs.Hls.LIVE_SYNC_DURATION_COUNT = 3;
+
 videojs.Hls.prototype.src = function(src) {
   var
     tech = this,
@@ -219,7 +224,7 @@ videojs.Hls.getMediaIndexForLive_ = function(selectedPlaylist) {
 
   var tailIterator = selectedPlaylist.segments.length,
       tailDuration = 0,
-      targetTail = (selectedPlaylist.targetDuration || 10) * 3;
+      targetTail = (selectedPlaylist.targetDuration || 10) * videojs.Hls.LIVE_SYNC_DURATION_COUNT;
 
   while (tailDuration < targetTail && tailIterator > 0) {
     tailDuration += selectedPlaylist.segments[tailIterator - 1].duration;
