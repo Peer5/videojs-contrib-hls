@@ -31,7 +31,7 @@
       url = options.url;
     }
 
-    request = window.peer5 ? new window.peer5.Request() : new XMLHttpRequest();
+    request = window.peer5 ? new window.peer5.VideoRequest() : new XMLHttpRequest();
     request.open(options.method, url);
     request.url = url;
     request.requestTime = new Date().getTime();
